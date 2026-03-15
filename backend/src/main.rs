@@ -1,4 +1,6 @@
+mod crypto;
 mod db;
+mod llm;
 mod models;
 mod routes;
 
