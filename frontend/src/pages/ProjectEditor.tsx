@@ -12,6 +12,8 @@ import VersionHistory from '../components/VersionHistory'
 import TestCasePanel from '../components/TestCasePanel'
 import RunPanel from '../components/RunPanel'
 import RunResultsView from '../components/RunResultsView'
+import AssertionPanel from '../components/AssertionPanel'
+import AnalyticsDashboard from '../components/AnalyticsDashboard'
 import type { Run } from '../api/testCases'
 
 export default function ProjectEditor() {
@@ -25,7 +27,7 @@ export default function ProjectEditor() {
   const [variables, setVariables] = useState<Record<string, string>>({})
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [activeRuns, setActiveRuns] = useState<Run[]>([])
-  const [activeTab, setActiveTab] = useState<'editor' | 'test'>('editor')
+  const [activeTab, setActiveTab] = useState<'editor' | 'test' | 'analytics'>('editor')
 
   const { data: project } = useQuery({
     queryKey: ['project', id],
@@ -111,6 +113,12 @@ export default function ProjectEditor() {
           >
             Test
           </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-3 py-1 text-sm rounded ${activeTab === 'analytics' ? 'bg-white shadow' : ''}`}
+          >
+            Analytics
+          </button>
         </div>
         <button
           onClick={() => saveMutation.mutate()}
@@ -156,7 +164,7 @@ export default function ProjectEditor() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'test' ? (
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <TestCasePanel
               projectId={id}
@@ -166,6 +174,7 @@ export default function ProjectEditor() {
 
             {selectedCaseId && (
               <>
+                <AssertionPanel testCaseId={selectedCaseId} />
                 <RunPanel
                   testCaseId={selectedCaseId}
                   variables={variables}
@@ -177,6 +186,10 @@ export default function ProjectEditor() {
                 />
               </>
             )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6">
+            <AnalyticsDashboard />
           </div>
         )}
 

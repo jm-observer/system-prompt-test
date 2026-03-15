@@ -210,10 +210,155 @@ async fn execute_run(pool: SqlitePool, run: Run, user_message: String) {
             .execute(&pool)
             .await;
         }
-        Err(e) => {
-            let _ = save_error(&pool, &run.id, &e).await;
+        Err(_) => {
+            let now = chrono::Utc::now().to_rfc3339();
+            let _ = sqlx::query("UPDATE runs SET status = 'failed', finished_at = ? WHERE id = ?")
+                .bind(&now)
+                .bind(&run.id)
+                .execute(&pool)
+                .await;
         }
     }
+
+    // Evaluate assertions
+    let assertions = match sqlx::query_as::<_, crate::models::Assertion>(
+        "SELECT * FROM assertions WHERE test_case_id = ?",
+    )
+    .bind(&run.test_case_id)
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(a) => a,
+        Err(_) => {
+            let _ = generate_report(&pool, &run.id).await;
+            return;
+        }
+    };
+
+    // We need the response to evaluate assertions. Fetch the latest result for this run.
+    let run_result = match sqlx::query_as::<_, crate::models::RunResult>(
+        "SELECT * FROM run_results WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&run.id)
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some(r)) => r,
+        _ => {
+            let _ = generate_report(&pool, &run.id).await;
+            return;
+        }
+    };
+
+    // Reconstruct LlmResponse for evaluator
+    let llm_res = crate::llm::LlmResponse {
+        content: run_result.response_text,
+        token_usage: serde_json::from_str(&run_result.token_usage).unwrap_or(crate::llm::TokenUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        }),
+        raw_response: run_result.raw_response,
+    };
+
+    for assertion in assertions {
+        if let Some(evaluator) =
+            crate::llm::assertions::create_evaluator(&assertion.assertion_type, &assertion.config)
+        {
+            let (passed, evidence) = evaluator.evaluate(&llm_res);
+            let result_id = ulid::Ulid::new().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
+
+            let _ = sqlx::query(
+                "INSERT INTO assertion_results (id, run_id, assertion_id, passed, evidence, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&result_id)
+            .bind(&run.id)
+            .bind(&assertion.id)
+            .bind(if passed { 1 } else { 0 })
+            .bind(evidence)
+            .bind(&now)
+            .execute(&pool)
+            .await;
+        }
+    }
+
+    // Generate report
+    let _ = generate_report(&pool, &run.id).await;
+}
+
+async fn generate_report(pool: &SqlitePool, run_id: &str) -> Result<(), StatusCode> {
+    let run = sqlx::query_as::<_, Run>("SELECT * FROM runs WHERE id = ?")
+        .bind(run_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let result = sqlx::query_as::<_, RunResult>("SELECT * FROM run_results WHERE run_id = ? ORDER BY created_at DESC LIMIT 1")
+        .bind(run_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let assertions_results = sqlx::query("SELECT passed FROM assertion_results WHERE run_id = ?")
+        .bind(run_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut passed_count = 0;
+    let mut failed_count = 0;
+    for row in assertions_results {
+        let passed: bool = sqlx::Row::get(&row, 0);
+        if passed { passed_count += 1; } else { failed_count += 1; }
+    }
+
+    let (latency, token_usage, total_tokens) = if let Some(r) = result {
+        let usage: crate::llm::TokenUsage = serde_json::from_str(&r.token_usage).unwrap_or(crate::llm::TokenUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        });
+        (r.latency_ms.unwrap_or(0), usage, usage.total_tokens)
+    } else {
+        (0, crate::llm::TokenUsage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, 0)
+    };
+
+    // Calculate cost
+    let pricing = sqlx::query_as::<_, crate::models::ModelPricing>("SELECT * FROM model_pricing WHERE model_id = ?")
+        .bind(&run.model_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
+    let cost = if let Some(p) = pricing {
+        (token_usage.prompt_tokens as f64 / 1000.0 * p.input_1k_tokens_usd) +
+        (token_usage.completion_tokens as f64 / 1000.0 * p.output_1k_tokens_usd)
+    } else {
+        0.0
+    };
+
+    let report_id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO run_reports (id, run_id, total_latency_ms, total_tokens, estimated_cost_usd, assertion_passed_count, assertion_failed_count, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(&report_id)
+    .bind(run_id)
+    .bind(latency)
+    .bind(total_tokens as i64)
+    .bind(cost)
+    .bind(passed_count)
+    .bind(failed_count)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(())
 }
 
 async fn save_error(pool: &SqlitePool, run_id: &str, error: &str) {

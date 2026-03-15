@@ -53,6 +53,23 @@ export interface RunWithResult extends Run {
   result: RunResult | null
 }
 
+export interface Assertion {
+  id: string
+  test_case_id: string
+  assertion_type: string
+  config: string
+  created_at: string
+}
+
+export interface AssertionResult {
+  id: string
+  run_id: string
+  assertion_id: string
+  passed: boolean
+  evidence: string | null
+  created_at: string
+}
+
 export interface RunRequest {
   model_ids: string[]
   variables?: Record<string, string>
@@ -92,3 +109,20 @@ export const fetchRuns = (testCaseId: string) =>
 
 export const fetchRun = (runId: string) =>
   fetch(`${API}/runs/${runId}`).then(r => handleResponse<RunWithResult>(r))
+
+// Assertion API
+export const fetchAssertions = (testCaseId: string) =>
+  fetch(`${API}/test-cases/${testCaseId}/assertions`).then(r => handleResponse<Assertion[]>(r))
+
+export const createAssertion = (testCaseId: string, data: { assertion_type: string, config: string }) =>
+  fetch(`${API}/test-cases/${testCaseId}/assertions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(r => handleResponse<Assertion>(r))
+
+export const deleteAssertion = (id: string) =>
+  fetch(`${API}/assertions/${id}`, { method: 'DELETE' })
+
+export const fetchAssertionResults = (runId: string) =>
+  fetch(`${API}/runs/${runId}/assertion-results`).then(r => handleResponse<AssertionResult[]>(r))

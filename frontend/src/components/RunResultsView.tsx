@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { fetchRuns, type RunWithResult, type Run } from '../api/testCases'
+import { fetchRuns, fetchAssertionResults, type RunWithResult, type Run, type AssertionResult } from '../api/testCases'
 import { streamRun, type StreamEvent } from '../api/sse'
 
 interface Props {
@@ -17,6 +17,21 @@ export default function RunResultsView({ testCaseId, activeRuns }: Props) {
 
   // For active runs, use SSE streaming
   const [streamContent, setStreamContent] = useState<Record<string, string>>({})
+  const [assertionResults, setAssertionResults] = useState<Record<string, AssertionResult[]>>({})
+
+  // Fetch assertion results for completed runs
+  useEffect(() => {
+    historicalRuns.forEach(async (run) => {
+      if (run.status === 'completed' && !assertionResults[run.id]) {
+        try {
+          const results = await fetchAssertionResults(run.id)
+          setAssertionResults((prev) => ({ ...prev, [run.id]: results }))
+        } catch (e) {
+          console.error('Failed to fetch assertion results', e)
+        }
+      }
+    })
+  }, [historicalRuns, assertionResults])
 
   const handleStreamEvent = useCallback((runId: string, event: StreamEvent) => {
     if (event.event_type === 'delta' && event.content) {
@@ -74,6 +89,25 @@ export default function RunResultsView({ testCaseId, activeRuns }: Props) {
                   <span className="text-gray-400">Waiting...</span>
                 )}
               </div>
+
+              {assertionResults[run.id] && (
+                <div className="mt-2 space-y-1">
+                  {assertionResults[run.id].map((ar) => (
+                    <div
+                      key={ar.id}
+                      className={`text-xs px-2 py-1 rounded flex justify-between items-center ${
+                        ar.passed ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                      }`}
+                      title={ar.evidence || ''}
+                    >
+                      <span className="flex items-center gap-1">
+                        {ar.passed ? '✓' : '✗'} Assertion
+                      </span>
+                      {ar.evidence && <span className="opacity-80 scale-90">{ar.evidence}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {run.result && (
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 border-t pt-2">

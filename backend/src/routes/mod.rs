@@ -4,6 +4,8 @@ pub mod providers;
 pub mod models_routes;
 pub mod test_cases;
 pub mod runs;
+pub mod assertions;
+pub mod reports;
 
 use axum::{http::StatusCode, routing::{get, post, put}, Router};
 use sqlx::SqlitePool;
@@ -97,6 +99,27 @@ pub fn create_router(pool: SqlitePool) -> Router {
         )
         .route("/api/runs/{id}", get(runs::get_run))
         .route("/api/runs/{id}/stream", get(runs::stream_run))
+        // Assertions
+        .route(
+            "/api/test-cases/{test_case_id}/assertions",
+            get(assertions::list_assertions).post(assertions::create_assertion),
+        )
+        .route(
+            "/api/assertions/{id}",
+            axum::routing::delete(assertions::delete_assertion),
+        )
+        .route(
+            "/api/runs/{run_id}/assertion-results",
+            get(assertions::list_assertion_results),
+        )
+        // Reports
+        .route("/api/runs/{run_id}/report", get(reports::get_run_report))
+        .route("/api/reports/summary", get(reports::list_reports_summary))
+        .route("/api/audit-logs", get(reports::list_audit_logs))
+        .route(
+            "/api/models/{model_id}/pricing",
+            get(reports::get_model_pricing).put(reports::update_model_pricing),
+        )
         .with_state(pool)
 }
 
