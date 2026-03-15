@@ -30,41 +30,68 @@ pub async fn create_run(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Get merged prompt for the project
-    let layers = sqlx::query_as::<_, crate::models::PromptLayer>(
-        "SELECT * FROM prompt_layers WHERE project_id = ? ORDER BY
-         CASE layer_type WHEN 'global' THEN 1 WHEN 'project' THEN 2 WHEN 'provider' THEN 3 WHEN 'model' THEN 4 END",
+    let mut runs = Vec::new();
+
+    // Fetch all prospective layers for the project once
+    let all_layers = sqlx::query_as::<_, crate::models::PromptLayer>(
+        "SELECT * FROM prompt_layers WHERE project_id = ?",
     )
     .bind(&test_case.project_id)
     .fetch_all(&pool)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let merged: Vec<&str> = layers
-        .iter()
-        .filter(|l| !l.content.trim().is_empty())
-        .map(|l| l.content.as_str())
-        .collect();
-    let mut system_prompt = merged.join("\n\n");
-
-    // Apply variables
-    if !payload.variables.is_empty() {
-        let re = regex::Regex::new(r"\{\{(\w+)\}\}").unwrap();
-        system_prompt = re
-            .replace_all(&system_prompt, |caps: &regex::Captures| {
-                let var_name = &caps[1];
-                payload
-                    .variables
-                    .get(var_name)
-                    .cloned()
-                    .unwrap_or_else(|| format!("{{{{{}}}}}", var_name))
-            })
-            .to_string();
-    }
-
-    let mut runs = Vec::new();
-
     for model_id in &payload.model_ids {
+        // Fetch model and provider info for this specific run
+        let model = sqlx::query_as::<_, AiModel>("SELECT * FROM models WHERE id = ?")
+            .bind(model_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?;
+
+        // Filter and merge layers for THIS model
+        let mut filtered_layers: Vec<&crate::models::PromptLayer> = all_layers
+            .iter()
+            .filter(|l| {
+                match l.layer_type.as_str() {
+                    "global" | "project" => true,
+                    "provider" => l.target_ref == model.provider_id,
+                    "model" => l.target_ref == model.id,
+                    _ => false,
+                }
+            })
+            .collect();
+        
+        filtered_layers.sort_by_key(|l| match l.layer_type.as_str() {
+            "global" => 1,
+            "project" => 2,
+            "provider" => 3,
+            "model" => 4,
+            _ => 5,
+        });
+
+        let mut system_prompt = filtered_layers
+            .iter()
+            .filter(|l| !l.content.trim().is_empty())
+            .map(|l| l.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Apply variables
+        if !payload.variables.is_empty() {
+            let re = regex::Regex::new(r"\{\{(\w+)\}\}").unwrap();
+            system_prompt = re
+                .replace_all(&system_prompt, |caps: &regex::Captures| {
+                    let var_name = &caps[1];
+                    payload.variables
+                        .get(var_name)
+                        .cloned()
+                        .unwrap_or_else(|| format!("{{{{{}}}}}", var_name))
+                })
+                .to_string();
+        }
+
         let id = ulid::Ulid::new().to_string();
         let now = chrono::Utc::now().to_rfc3339();
 

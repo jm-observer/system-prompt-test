@@ -129,62 +129,66 @@ export default function ProjectEditor() {
         </button>
       </div>
 
-      {activeTab === 'editor' ? (
-        <>
-          {/* Layer Tabs */}
-          <LayerTabs
-            layers={layers}
-            activeLayerId={activeLayer?.id ?? null}
-            onSelect={handleLayerSelect}
-          />
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {activeTab === 'editor' ? (
+          <>
+            {/* Layer Tabs */}
+            <LayerTabs
+              layers={layers}
+              activeLayerId={activeLayer?.id ?? null}
+              onSelect={handleLayerSelect}
+            />
 
-          {/* Editor + Preview */}
-          <div className="flex flex-1 min-h-0">
-            <div className="flex-1 border-r border-gray-200">
-              <MonacoEditorWrapper
-                value={editorContent}
-                onChange={setEditorContent}
-                height="100%"
-              />
+            {/* Editor + Preview */}
+            <div className="flex flex-1 min-h-0">
+              <div className="flex-1 border-r border-gray-200">
+                <MonacoEditorWrapper
+                  value={editorContent}
+                  onChange={setEditorContent}
+                  height="100%"
+                />
+              </div>
+              <div className="w-96 bg-gray-50 flex flex-col">
+                <div className="flex-1 overflow-y-auto">
+                  <MergedPreview projectId={id} variables={variables} />
+                </div>
+                <VersionHistory layerId={activeLayer?.id ?? ''} />
+              </div>
             </div>
-            <div className="w-96 bg-gray-50">
-              <MergedPreview projectId={id} variables={variables} />
-            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <TestCasePanel
+              projectId={id}
+              selectedCaseId={selectedCaseId}
+              onSelect={setSelectedCaseId}
+            />
+
+            {selectedCaseId && (
+              <>
+                <RunPanel
+                  testCaseId={selectedCaseId}
+                  variables={variables}
+                  onRunsCreated={setActiveRuns}
+                />
+                <RunResultsView
+                  testCaseId={selectedCaseId}
+                  activeRuns={activeRuns}
+                />
+              </>
+            )}
           </div>
+        )}
 
-          {/* Variable Panel */}
+        {/* Variable Panel - Always shown at bottom if variables exist */}
+        <div className="border-t border-gray-200">
           <VariablePanel
             content={allContent}
             variables={variables}
             onChange={setVariables}
           />
-
-          {/* Version History */}
-          {activeLayer && <VersionHistory layerId={activeLayer.id} />}
-        </>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <TestCasePanel
-            projectId={id}
-            selectedCaseId={selectedCaseId}
-            onSelect={setSelectedCaseId}
-          />
-
-          {selectedCaseId && (
-            <>
-              <RunPanel
-                testCaseId={selectedCaseId}
-                variables={variables}
-                onRunsCreated={setActiveRuns}
-              />
-              <RunResultsView
-                testCaseId={selectedCaseId}
-                activeRuns={activeRuns}
-              />
-            </>
-          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

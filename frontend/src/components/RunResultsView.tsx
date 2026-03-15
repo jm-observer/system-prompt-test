@@ -76,9 +76,30 @@ export default function RunResultsView({ testCaseId, activeRuns }: Props) {
               </div>
 
               {run.result && (
-                <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                  {run.result.latency_ms && <span>{run.result.latency_ms}ms</span>}
-                  <span>{run.result.token_usage}</span>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 border-t pt-2">
+                  {run.result.latency_ms && (
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {run.result.latency_ms}ms
+                    </span>
+                  )}
+                  {(() => {
+                    try {
+                      const usage = JSON.parse(run.result.token_usage)
+                      if (!usage.total_tokens) return null
+                      return (
+                        <span className="flex items-center gap-2">
+                          <span title="Prompt Tokens" className="bg-gray-100 px-1 rounded">P: {usage.prompt_tokens}</span>
+                          <span title="Completion Tokens" className="bg-gray-100 px-1 rounded">C: {usage.completion_tokens}</span>
+                          <span className="font-semibold text-gray-600">Total: {usage.total_tokens}</span>
+                        </span>
+                      )
+                    } catch {
+                      return <span>{run.result.token_usage}</span>
+                    }
+                  })()}
                 </div>
               )}
             </div>
