@@ -1,7 +1,10 @@
 const API = '/api'
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(body || `HTTP ${res.status}`)
+  }
   return res.json()
 }
 
@@ -62,12 +65,14 @@ export const fetchAuditLogs = () =>
 export const fetchModelPricing = (modelId: string) =>
   fetch(`${API}/models/${modelId}/pricing`).then(r => handleResponse<ModelPricing>(r))
 
-export const updateModelPricing = (modelId: string, data: { input_1k_tokens_usd: number, output_1k_tokens_usd: number }) =>
-  fetch(`${API}/models/${modelId}/pricing`, {
+export const updateModelPricing = async (modelId: string, data: { input_1k_tokens_usd: number, output_1k_tokens_usd: number }) => {
+  const res = await fetch(`${API}/models/${modelId}/pricing`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).then(r => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    return r.ok
   })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(body || `HTTP ${res.status}`)
+  }
+}

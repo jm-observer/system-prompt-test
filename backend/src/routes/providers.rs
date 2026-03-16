@@ -19,8 +19,13 @@ pub async fn list_providers(
     let responses: Vec<ProviderResponse> = providers
         .iter()
         .map(|p| {
-            let plain_key = crypto::decrypt(&p.encrypted_api_key).unwrap_or_default();
-            let masked = crypto::mask_api_key(&plain_key);
+            let masked = match crypto::decrypt(&p.encrypted_api_key) {
+                Ok(plain_key) => crypto::mask_api_key(&plain_key),
+                Err(e) => {
+                    tracing::warn!("Failed to decrypt API key for provider {}: {}", p.id, e);
+                    "****".to_string()
+                }
+            };
             p.to_response(masked)
         })
         .collect();
@@ -76,8 +81,13 @@ pub async fn get_provider(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let plain_key = crypto::decrypt(&provider.encrypted_api_key).unwrap_or_default();
-    let masked = crypto::mask_api_key(&plain_key);
+    let masked = match crypto::decrypt(&provider.encrypted_api_key) {
+        Ok(plain_key) => crypto::mask_api_key(&plain_key),
+        Err(e) => {
+            tracing::warn!("Failed to decrypt API key for provider {}: {}", provider.id, e);
+            "****".to_string()
+        }
+    };
     Ok(Json(provider.to_response(masked)))
 }
 
@@ -100,8 +110,14 @@ pub async fn update_provider(
     let (encrypted_key, masked) = if let Some(new_key) = &payload.api_key {
         (crypto::encrypt(new_key), crypto::mask_api_key(new_key))
     } else {
-        let plain = crypto::decrypt(&existing.encrypted_api_key).unwrap_or_default();
-        (existing.encrypted_api_key, crypto::mask_api_key(&plain))
+        let masked = match crypto::decrypt(&existing.encrypted_api_key) {
+            Ok(plain) => crypto::mask_api_key(&plain),
+            Err(e) => {
+                tracing::warn!("Failed to decrypt existing API key for provider {}: {}", id, e);
+                "****".to_string()
+            }
+        };
+        (existing.encrypted_api_key, masked)
     };
 
     sqlx::query(

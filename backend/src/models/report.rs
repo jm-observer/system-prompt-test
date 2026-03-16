@@ -34,7 +34,7 @@ pub struct AuditLog {
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, FromRow)]
 pub struct ReportSummary {
     pub run_id: String,
     pub status: String,

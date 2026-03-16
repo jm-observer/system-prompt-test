@@ -11,23 +11,33 @@ export function streamRun(
   onError?: (error: Error) => void,
 ): () => void {
   const eventSource = new EventSource(`/api/runs/${runId}/stream`)
+  let closed = false
+
+  const cleanup = () => {
+    if (!closed) {
+      closed = true
+      eventSource.close()
+    }
+  }
 
   eventSource.onmessage = (e) => {
+    if (closed) return
     try {
       const event: StreamEvent = JSON.parse(e.data)
       onEvent(event)
       if (event.event_type === 'done' || event.event_type === 'error') {
-        eventSource.close()
+        cleanup()
       }
-    } catch {
-      // ignore parse errors
+    } catch (err) {
+      console.warn('Failed to parse SSE event:', err)
     }
   }
 
   eventSource.onerror = () => {
+    if (closed) return
     onError?.(new Error('SSE connection error'))
-    eventSource.close()
+    cleanup()
   }
 
-  return () => eventSource.close()
+  return cleanup
 }

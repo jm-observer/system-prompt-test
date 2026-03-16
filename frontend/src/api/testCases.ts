@@ -1,7 +1,10 @@
 const API = '/api'
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(body || `HTTP ${res.status}`)
+  }
   return res.json()
 }
 
@@ -93,8 +96,10 @@ export const updateTestCase = (id: string, data: UpdateTestCaseRequest) =>
     body: JSON.stringify(data),
   }).then(r => handleResponse<TestCase>(r))
 
-export const deleteTestCase = (id: string) =>
-  fetch(`${API}/test-cases/${id}`, { method: 'DELETE' })
+export const deleteTestCase = async (id: string) => {
+  const res = await fetch(`${API}/test-cases/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete test case: HTTP ${res.status}`)
+}
 
 // Run API
 export const createRun = (testCaseId: string, data: RunRequest) =>
@@ -121,8 +126,10 @@ export const createAssertion = (testCaseId: string, data: { assertion_type: stri
     body: JSON.stringify(data),
   }).then(r => handleResponse<Assertion>(r))
 
-export const deleteAssertion = (id: string) =>
-  fetch(`${API}/assertions/${id}`, { method: 'DELETE' })
+export const deleteAssertion = async (id: string) => {
+  const res = await fetch(`${API}/assertions/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete assertion: HTTP ${res.status}`)
+}
 
 export const fetchAssertionResults = (runId: string) =>
   fetch(`${API}/runs/${runId}/assertion-results`).then(r => handleResponse<AssertionResult[]>(r))

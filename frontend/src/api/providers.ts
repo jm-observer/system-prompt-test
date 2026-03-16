@@ -1,7 +1,10 @@
 const API = '/api'
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(body || `HTTP ${res.status}`)
+  }
   return res.json()
 }
 
@@ -68,8 +71,10 @@ export const updateProvider = (id: string, data: UpdateProviderRequest) =>
     body: JSON.stringify(data),
   }).then(r => handleResponse<ProviderResponse>(r))
 
-export const deleteProvider = (id: string) =>
-  fetch(`${API}/providers/${id}`, { method: 'DELETE' })
+export const deleteProvider = async (id: string) => {
+  const res = await fetch(`${API}/providers/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete provider: HTTP ${res.status}`)
+}
 
 // Model API
 export const fetchModels = (providerId: string) =>
@@ -92,5 +97,7 @@ export const updateModel = (id: string, data: UpdateModelRequest) =>
     body: JSON.stringify(data),
   }).then(r => handleResponse<AiModel>(r))
 
-export const deleteModel = (id: string) =>
-  fetch(`${API}/models/${id}`, { method: 'DELETE' })
+export const deleteModel = async (id: string) => {
+  const res = await fetch(`${API}/models/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete model: HTTP ${res.status}`)
+}

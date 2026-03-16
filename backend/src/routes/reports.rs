@@ -5,7 +5,7 @@ use axum::{
 };
 use sqlx::SqlitePool;
 use crate::models::{RunReport, ReportSummary, AuditLog, ModelPricing};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct ReportQuery {
@@ -30,7 +30,7 @@ pub async fn get_run_report(
 
 pub async fn list_reports_summary(
     State(pool): State<SqlitePool>,
-    Query(query): Query<ReportQuery>,
+    Query(_query): Query<ReportQuery>,
 ) -> Result<Json<Vec<ReportSummary>>, StatusCode> {
     // This is a simplified version of trend analysis summary
     let summaries = sqlx::query_as::<_, ReportSummary>(

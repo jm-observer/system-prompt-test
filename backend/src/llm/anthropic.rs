@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use super::{LlmProvider, LlmRequest, LlmResponse, StreamEvent, TokenUsage};
@@ -14,10 +15,15 @@ pub struct AnthropicProvider {
 
 impl AnthropicProvider {
     pub fn new(base_url: String, api_key: String) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(300))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
         Self {
             base_url,
             api_key,
-            client: Client::new(),
+            client,
         }
     }
 }
